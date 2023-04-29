@@ -3,11 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zconf.h>
+#include <zlib.h>
+#include <libdeflate.h>
 
 #if defined(ZLIB)
-
 #include <zlib.h>
-
 #elif defined(LIBDEFLATE)
 #include <libdeflate.h>
 #elif defined(ISAL)
@@ -257,45 +258,48 @@ int readPLTE(FILE *file, unsigned char *palette)
 
 int decompress_deflate_stream(unsigned char *arrOfData, int dataSize, unsigned char *arrOfDecrypt, int decryptSize)
 {
+
+#ifdef ZLIB
     uLongf decryptSizeLong = decryptSize;
     int ret = uncompress(arrOfDecrypt, &decryptSizeLong, arrOfData, dataSize);
 
     if (ret != Z_OK)
         return ERROR_DATA_INVALID;
+#endif
 
-     #ifdef USE_LIBDEFLATE
-         struct libdeflate_decompressor *decompressor = libdeflate_alloc_decompressor();
+#ifdef USE_LIBDEFLATE
+    struct libdeflate_decompressor *decompressor = libdeflate_alloc_decompressor();
          if (decompressor == NULL) {
-             return ERROR_DECOMPRESSION_FAILED;
+             return ERROR_DATA_INVALID;
          }
 
          size_t out_nbytes_written;
-         ret = libdeflate_deflate_decompress(decompressor, arrOfData, dataSize, arrOfDecrypt, decryptSize,
+         int ret = libdeflate_deflate_decompress(decompressor, arrOfData, dataSize, arrOfDecrypt, decryptSize,
          &out_nbytes_written); if (ret != LIBDEFLATE_SUCCESS) {
              libdeflate_free_decompressor(decompressor);
-             return ERROR_DECOMPRESSION_FAILED;
+             return ERROR_DATA_INVALID;
          }
 
          libdeflate_free_decompressor(decompressor);
-     #endif
+#endif
 
-     #ifdef USE_ISAL
-         struct inflate_state state;
+#ifdef USE_ISAL
+    struct inflate_state state;
 
-         memset(&state, 0, sizeof(state));
-         state.next_in = arrOfData;
-         state.avail_in = dataSize;
-         state.next_out = arrOfDecrypt;
-         state.avail_out = decryptSize;
+    memset(&state, 0, sizeof(state));
+    state.next_in = arrOfData;
+    state.avail_in = dataSize;
+    state.next_out = arrOfDecrypt;
+    state.avail_out = decryptSize;
 
-         ret = isal_inflate(&state);
-         if (ret != ISAL_DECOMP_OK) {
-             return ERROR_DECOMPRESSION_FAILED;
-         }
-     #endif
-
+    int ret = isal_inflate(&state);
+    if (ret != ISAL_DECOMP_OK) {
+        return LIBDEFLATE_BAD_DATA;
+    }
+#endif
     return 0;
 }
+
 int PaethPredictor(int a, int b, int c)
 {
     int p = a + b - c;
